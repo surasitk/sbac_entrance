@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SBAC Entrance — QR Check-in Load Tester</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1320; --panel:#171c2e; --panel2:#1e2440; --line:#2a3152;
+    --txt:#e7eaf5; --muted:#9aa3c4; --accent:#5b8cff; --ok:#33c481; --bad:#ff5d6c;
+    --warn:#ffb547; --chip:#232a47;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+       background:var(--bg);color:var(--txt);font-size:14px}
+  header{padding:16px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  header .tag{font-size:11px;color:var(--muted);background:var(--chip);padding:3px 8px;border-radius:20px}
+  .wrap{display:grid;grid-template-columns:minmax(380px,440px) 1fr;gap:0;min-height:calc(100vh - 58px)}
+  .col{padding:20px 22px;overflow-y:auto}
+  .left{border-right:1px solid var(--line)}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:22px 0 10px;font-weight:600}
+  h2:first-child{margin-top:0}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--txt);
+       border-radius:8px;padding:9px 11px;font-size:13px;font-family:inherit}
+  textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.5}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45}
+  .filebox{border:1.5px dashed var(--line);border-radius:10px;padding:18px;text-align:center;cursor:pointer;
+       background:var(--panel);transition:.15s}
+  .filebox:hover{border-color:var(--accent);background:var(--panel2)}
+  .filebox.has{border-color:var(--ok)}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:12px 16px;font-size:14px;
+       font-weight:600;cursor:pointer;width:100%;margin-top:14px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.stop{background:var(--bad)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);margin-top:8px}
+  /* right column */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .stat .n{font-size:26px;font-weight:700;line-height:1}
+  .stat .l{font-size:11px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.05em}
+  .stat.ok .n{color:var(--ok)} .stat.bad .n{color:var(--bad)} .stat.acc .n{color:var(--accent)}
+  .progress{height:10px;background:var(--panel2);border-radius:10px;overflow:hidden;margin-bottom:6px}
+  .progress > span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),#7aa2ff);transition:width .2s}
+  .pmeta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:18px}
+  .log{background:#0b0e18;border:1px solid var(--line);border-radius:10px;height:240px;overflow-y:auto;
+       padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.6}
+  .log .ln{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .log .s2{color:var(--ok)} .log .s4{color:var(--warn)} .log .s5{color:var(--bad)} .log .sn{color:var(--bad)}
+  .log .t{color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .card h3{margin:0 0 12px;font-size:13px;font-weight:600}
+  .pct{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+  .pct .b{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}
+  .pct .b .v{font-size:20px;font-weight:700} .pct .b .k{font-size:11px;color:var(--muted);margin-top:3px}
+  .hidden{display:none}
+  .note{background:rgba(255,181,71,.1);border:1px solid rgba(255,181,71,.35);color:#ffd9a0;
+        border-radius:9px;padding:10px 12px;font-size:12px;line-height:1.5;margin-top:14px}
+  .empty{color:var(--muted);text-align:center;padding:60px 20px;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>QR Check-in Load Tester</h1>
+  <span class="tag">SBAC Entrance · ShareRing</span>
+</header>
+
+<div class="wrap">
+  <!-- ============ LEFT: setup ============ -->
+  <div class="col left">
+    <h2>1 · QR codes</h2>
+    <div class="filebox" id="filebox">
+      <div id="fileLabel">Click to upload a QR file<br><span class="hint">.json / .csv / .txt — or paste below</span></div>
+      <input type="file" id="fileInput" accept=".json,.csv,.txt" class="hidden" />
+    </div>
+    <label>Or paste QR codes (one per line)</label>
+    <textarea id="qrPaste" rows="4" placeholder="SBAC-0001&#10;SBAC-0002&#10;SBAC-0003"></textarea>
+    <div class="hint" id="qrCount">No QR codes loaded</div>
+
+    <h2>2 · Endpoint</h2>
+    <label>Server URL</label>
+    <input id="url" value="https://api.sharering.network/v1/checkin" />
+    <div class="row">
+      <div style="flex:.5">
+        <label>Method</label>
+        <select id="method"><option>POST</option><option>GET</option><option>PUT</option></select>
+      </div>
+      <div>
+        <label>Bearer token (optional)</label>
+        <input id="token" placeholder="paste if the API requires it" />
+      </div>
+    </div>
+    <label>Headers (Key: Value, one per line)</label>
+    <textarea id="headers" rows="2">Content-Type: application/json</textarea>
+    <label>Body template — use <code>{{qr}}</code> for the QR value</label>
+    <textarea id="body" rows="5">{
+  "eventId": "sbac-2026",
+  "qr": "{{qr}}"
+}</textarea>
+    <div class="hint">GET sends no body — put <code>{{qr}}</code> in the URL instead.</div>
+
+    <h2>3 · Load profile</h2>
+    <div class="row">
+      <div>
+        <label>Concurrency (parallel requests)</label>
+        <input id="conc" type="number" value="50" min="1" />
+      </div>
+      <div>
+        <label>Total requests</label>
+        <input id="total" type="number" placeholder="= number of QR" />
+      </div>
+    </div>
+    <div class="hint">Leave Total empty = one request per QR (each attendee scans once). If Total &gt; QR count, codes are reused.</div>
+
+    <button class="btn" id="run">▶ Start test</button>
+    <button class="btn stop hidden" id="stop">■ Stop</button>
+    <button class="btn ghost hidden" id="export">⬇ Download results (JSON)</button>
+
+    <div class="note">
+      <b>Browser limitations:</b> a browser opens only ~6 connections per host and the server
+      must allow <b>CORS</b>. This page is best for functional checks and moderate load.
+      For a real 300–400 req/s test, use the <b>k6</b> script in this repo alongside it.
+    </div>
+  </div>
+
+  <!-- ============ RIGHT: live + dashboard ============ -->
+  <div class="col right">
+    <div class="stats">
+      <div class="stat acc"><div class="n" id="sSent">0</div><div class="l">Sent</div></div>
+      <div class="stat ok"><div class="n" id="sOk">0</div><div class="l">Success</div></div>
+      <div class="stat bad"><div class="n" id="sFail">0</div><div class="l">Failed</div></div>
+      <div class="stat"><div class="n" id="sRps">0</div><div class="l">Req / s</div></div>
+    </div>
+    <div class="progress"><span id="bar"></span></div>
+    <div class="pmeta">
+      <span id="pPct">0%</span>
+      <span id="pInflight">in-flight: 0</span>
+      <span id="pElapsed">0.0s</span>
+    </div>
+
+    <h2>Live progress</h2>
+    <div class="log" id="log"><div class="empty" id="logEmpty">Waiting to start…</div></div>
+
+    <div id="dash" class="hidden">
+      <h2>Summary dashboard</h2>
+      <div class="pct">
+        <div class="b"><div class="v" id="dSuccessRate">–</div><div class="k">Success rate</div></div>
+        <div class="b"><div class="v" id="dThroughput">–</div><div class="k">Avg req/s</div></div>
+        <div class="b"><div class="v" id="dDuration">–</div><div class="k">Total time</div></div>
+      </div>
+      <div class="pct" style="margin-top:10px">
+        <div class="b"><div class="v" id="dP50">–</div><div class="k">p50 ms</div></div>
+        <div class="b"><div class="v" id="dP95">–</div><div class="k">p95 ms</div></div>
+        <div class="b"><div class="v" id="dP99">–</div><div class="k">p99 ms</div></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h3>Success vs Failed</h3><canvas id="cPie" height="180"></canvas></div>
+        <div class="card"><h3>Status codes</h3><canvas id="cStatus" height="180"></canvas></div>
+        <div class="card"><h3>Throughput over time (req/s)</h3><canvas id="cRps" height="180"></canvas></div>
+        <div class="card"><h3>Latency (ms)</h3><canvas id="cLat" height="180"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+  let qrList = [];
+  let running = false, aborted = false;
+  let results = [];          // {ok, status, ms, error}
+  let charts = {};
+
+  /* ---------- QR loading ---------- */
+  function parseQR(text, name){
+    text = text.trim();
+    if(!text) return [];
+    if((name && name.endsWith('.json')) || text[0]==='[' || text[0]==='{'){
+      try{
+        const p = JSON.parse(text);
+        const arr = Array.isArray(p) ? p : (p.codes||p.qrs||[]);
+        return arr.map(x => typeof x==='string' ? x : (x.qr||x.code||x.token||'')).filter(Boolean);
+      }catch(e){ /* fall through to line parse */ }
+    }
+    // CSV or newline text
+    const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    if(name && name.endsWith('.csv')){
+      const header = lines[0].split(',').map(h=>h.trim().toLowerCase());
+      let idx = header.indexOf('qr'); if(idx<0) idx=0;
+      const looksHeader = header.includes('qr');
+      return (looksHeader?lines.slice(1):lines).map(l=>l.split(',')[idx]?.trim()).filter(Boolean);
+    }
+    return lines;
+  }
+  function setQR(list){
+    qrList = list;
+    $('qrCount').textContent = list.length ? `${list.length} QR codes loaded` : 'No QR codes loaded';
+    $('qrCount').style.color = list.length ? 'var(--ok)' : 'var(--muted)';
+    if(!$('total').value) $('total').placeholder = '= '+list.length;
+  }
+  $('filebox').addEventListener('click', ()=>$('fileInput').click());
+  $('fileInput').addEventListener('change', e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = ()=>{
+      setQR(parseQR(r.result, f.name.toLowerCase()));
+      $('fileLabel').innerHTML = '📄 '+f.name;
+      $('filebox').classList.add('has');
+      $('qrPaste').value='';
+    };
+    r.readAsText(f);
+  });
+  $('qrPaste').addEventListener('input', e=> setQR(parseQR(e.target.value,'')));
+
+  /* ---------- request building ---------- */
+  function buildHeaders(){
+    const h = {};
+    $('headers').value.split(/\r?\n/).forEach(l=>{
+      const i = l.indexOf(':'); if(i>0) h[l.slice(0,i).trim()] = l.slice(i+1).trim();
+    });
+    const t = $('token').value.trim();
+    if(t) h['Authorization'] = 'Bearer '+t;
+    return h;
+  }
+  async function fireOne(qr){
+    const url = $('url').value.replace(/{{qr}}/g, encodeURIComponent(qr));
+    const method = $('method').value;
+    const opts = { method, headers: buildHeaders() };
+    if(method!=='GET' && method!=='HEAD'){
+      opts.body = $('body').value.replace(/{{qr}}/g, qr);
+    }
+    const t0 = performance.now();
+    try{
+      const res = await fetch(url, opts);
+      const ms = performance.now()-t0;
+      return { ok: res.status>=200 && res.status<300, status: res.status, ms };
+    }catch(err){
+      const ms = performance.now()-t0;
+      return { ok:false, status:0, ms, error: err.message||'network error' };
+    }
+  }
+
+  /* ---------- live UI ---------- */
+  const log = $('log');
+  function addLog(idx, r){
+    if($('logEmpty')) $('logEmpty').remove();
+    const cls = r.status===0 ? 'sn' : 's'+String(r.status)[0];
+    const div = document.createElement('div');
+    div.className='ln';
+    const code = r.status===0 ? ('ERR '+(r.error||'')) : r.status;
+    div.innerHTML = `<span class="t">#${idx}</span> <span class="${cls}">${code}</span> · ${Math.round(r.ms)}ms`;
+    log.insertBefore(div, log.firstChild);
+    if(log.children.length>300) log.removeChild(log.lastChild);
+  }
+  function renderStats(sent,ok,fail,inflight,total,startT){
+    $('sSent').textContent=sent; $('sOk').textContent=ok; $('sFail').textContent=fail;
+    const el=(performance.now()-startT)/1000;
+    $('sRps').textContent = el>0 ? Math.round(sent/el) : 0;
+    const pct = total? Math.round(sent/total*100):0;
+    $('bar').style.width=pct+'%'; $('pPct').textContent=pct+'%';
+    $('pInflight').textContent='in-flight: '+inflight;
+    $('pElapsed').textContent=el.toFixed(1)+'s';
+  }
+
+  /* ---------- runner (concurrency pool) ---------- */
+  async function run(){
+    const total = parseInt($('total').value) || qrList.length;
+    if(!qrList.length){ alert('Please upload or paste QR codes first.'); return; }
+    if(!$('url').value.trim()){ alert('Enter the Server URL first.'); return; }
+    const conc = Math.max(1, parseInt($('conc').value)||50);
+
+    running=true; aborted=false; results=[];
+    log.innerHTML=''; $('dash').classList.add('hidden');
+    $('run').classList.add('hidden'); $('stop').classList.remove('hidden');
+    $('export').classList.add('hidden');
+
+    let next=0, sent=0, ok=0, fail=0, inflight=0;
+    const startT = performance.now();
+    const rpsBuckets = {}; // secondIndex -> count
+
+    const ui = setInterval(()=>renderStats(sent,ok,fail,inflight,total,startT), 120);
+
+    async function worker(){
+      while(!aborted){
+        const i = next++; if(i>=total) return;
+        const qr = qrList[i % qrList.length];
+        inflight++;
+        const r = await fireOne(qr);
+        inflight--; sent++;
+        results.push(r);
+        if(r.ok) ok++; else fail++;
+        const sec = Math.floor((performance.now()-startT)/1000);
+        rpsBuckets[sec]=(rpsBuckets[sec]||0)+1;
+        if(sent<=300 || sent%5===0) addLog(i+1, r);
+      }
+    }
+    const pool = Array.from({length:Math.min(conc,total)}, worker);
+    await Promise.all(pool);
+
+    clearInterval(ui);
+    renderStats(sent,ok,fail,0,total,startT);
+    running=false;
+    $('stop').classList.add('hidden'); $('run').classList.remove('hidden');
+    $('export').classList.remove('hidden');
+    buildDashboard(startT, rpsBuckets);
+  }
+
+  /* ---------- summary dashboard ---------- */
+  function pctile(sorted,p){ if(!sorted.length)return 0; const i=Math.min(sorted.length-1,Math.floor(p/100*sorted.length)); return sorted[i]; }
+  function buildDashboard(startT, rpsBuckets){
+    const total=results.length; if(!total) return;
+    const ok=results.filter(r=>r.ok).length, fail=total-ok;
+    const dur=(performance.now()-startT)/1000;
+    const lat=results.map(r=>r.ms).sort((a,b)=>a-b);
+
+    $('dSuccessRate').textContent = (ok/total*100).toFixed(1)+'%';
+    $('dSuccessRate').style.color = (ok/total>=.99)?'var(--ok)':(ok/total>=.9?'var(--warn)':'var(--bad)');
+    $('dThroughput').textContent = (total/dur).toFixed(0);
+    $('dDuration').textContent = dur.toFixed(1)+'s';
+    $('dP50').textContent=Math.round(pctile(lat,50));
+    $('dP95').textContent=Math.round(pctile(lat,95));
+    $('dP99').textContent=Math.round(pctile(lat,99));
+
+    $('dash').classList.remove('hidden');
+    Object.values(charts).forEach(c=>c&&c.destroy());
+
+    const gridc='#2a3152', txtc='#9aa3c4';
+    Chart.defaults.color=txtc; Chart.defaults.borderColor=gridc; Chart.defaults.font.size=11;
+
+    charts.pie = new Chart($('cPie'),{type:'doughnut',
+      data:{labels:['Success','Failed'],datasets:[{data:[ok,fail],backgroundColor:['#33c481','#ff5d6c'],borderWidth:0}]},
+      options:{plugins:{legend:{position:'bottom'}}}});
+
+    // status code breakdown
+    const codes={}; results.forEach(r=>{const k=r.status===0?'ERR':r.status; codes[k]=(codes[k]||0)+1;});
+    charts.status = new Chart($('cStatus'),{type:'bar',
+      data:{labels:Object.keys(codes),datasets:[{data:Object.values(codes),
+        backgroundColor:Object.keys(codes).map(k=>k==='ERR'?'#ff5d6c':(String(k)[0]==='2'?'#33c481':(String(k)[0]==='5'?'#ff5d6c':'#ffb547')))}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+
+    // rps over time
+    const maxSec=Math.max(0,...Object.keys(rpsBuckets).map(Number));
+    const rpsLabels=[],rpsData=[];
+    for(let s=0;s<=maxSec;s++){rpsLabels.push(s+'s');rpsData.push(rpsBuckets[s]||0);}
+    charts.rps = new Chart($('cRps'),{type:'line',
+      data:{labels:rpsLabels,datasets:[{data:rpsData,borderColor:'#5b8cff',backgroundColor:'rgba(91,140,255,.15)',fill:true,tension:.3,pointRadius:0}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+
+    // latency percentiles
+    charts.lat = new Chart($('cLat'),{type:'bar',
+      data:{labels:['min','p50','p90','p95','p99','max'],
+        datasets:[{data:[lat[0],pctile(lat,50),pctile(lat,90),pctile(lat,95),pctile(lat,99),lat[lat.length-1]].map(Math.round),
+        backgroundColor:'#7aa2ff'}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,title:{display:true,text:'ms'}}}}});
+  }
+
+  /* ---------- export ---------- */
+  $('export').addEventListener('click', ()=>{
+    const ok=results.filter(r=>r.ok).length;
+    const lat=results.map(r=>r.ms).sort((a,b)=>a-b);
+    const out={ when:new Date().toISOString(), url:$('url').value, method:$('method').value,
+      total:results.length, success:ok, failed:results.length-ok,
+      latency_ms:{p50:Math.round(pctile(lat,50)),p95:Math.round(pctile(lat,95)),p99:Math.round(pctile(lat,99)),
+        max:Math.round(lat[lat.length-1]||0)}, raw:results };
+    const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='qr-loadtest-'+Date.now()+'.json'; a.click();
+  });
+
+  $('run').addEventListener('click', run);
+  $('stop').addEventListener('click', ()=>{ aborted=true; });
+})();
+</script>
+</body>
+</html>
