@@ -1,0 +1,11 @@
+# Real attendee QR codes — never commit these
+data/qr-codes.json
+data/qr-codes.csv
+
+# k6 output
+summary.json
+*.html
+results/
+
+# secrets
+.env
